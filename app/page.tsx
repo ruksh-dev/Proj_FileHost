@@ -1,101 +1,104 @@
-import Image from "next/image";
+'use client'
+import {handleUpload, completeMultiPartUpload, getDownloadLink} from '@/components/actions/handleMultiPartUpload';
+import {FormEvent, useRef, useState} from 'react'
+import axios from 'axios'
+import { headers } from 'next/headers';
 
-export default function Home() {
+const getChunks=(file:any,fileSize:number)=>{
+  const chunkSize=5*1024*104;
+    const totalChunks=Math.ceil(fileSize/chunkSize);
+    let chunks=[];
+    let offset=0;
+    while(offset<fileSize) {
+        const chunk=file.slice(offset,offset+chunkSize);
+        chunks.push(chunk);
+        offset+=chunkSize;
+    }
+    return {chunks, totalChunks};
+}
+
+const uploadChunks=async(chunks: any[], totalChunks:number, fileType: string, fileName: string)=>{
+  try{
+  const response=await handleUpload(totalChunks, fileType,fileName);
+  if(!response || !response.preSignedUrls || !response.key || !response.uploadId) throw Error("did not recieved data")
+  const parts:any[]=[]
+  for(let i=0;i<totalChunks;i++) {
+    const url=response.preSignedUrls[i].url
+    if(!url) throw Error("url not defined")
+    const uploadPartResponse=await axios.put(url,chunks[i])
+    if(!uploadPartResponse || !uploadPartResponse.headers) throw Error("failed to upload part!") 
+    parts.push({PartNumber: i+1, ETag: uploadPartResponse.headers['etag']})
+  }
+  const completeMultiPartUploadResponse=await completeMultiPartUpload(response.key, response.uploadId, parts)
+  return response?.key;
+  }catch(err){
+    console.log(err);
+  }
+}
+
+const downloadFile=async()=>{
+  try{
+
+  }catch(err){
+    console.log(err);
+  }
+}
+const FileDownloadLink = ({ fileUrl, fileName }:{fileUrl:string, fileName:string}) => {
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
+      <div className='h-full flex flex-col items-center bg-white p-2 rounded-md'>
+          <label className='text-black' htmlFor='fileDownload'>Download File</label>
           <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+              id='fileDownload'
+              href={fileUrl}
+              download={fileName}
+              className='text-blue-500'
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
+              {fileName}
           </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </div>
+  );
+};
+interface fileMetaDataProps {
+  fileName: string;
+  fileType: string;
+  fileUrl: string;
+}
+export default function Home() {
+  const [fileMetaData,setFileMetaData]=useState<fileMetaDataProps | null>(null)
+  const formRef=useRef<HTMLFormElement | null>(null)
+  const handleSubmit=async(e:any)=>{
+    try{
+    e.preventDefault();
+    const file=e.target.fileUpload.files[0];
+    const fileSize=file.size;
+    const fileType=file.type;
+    const fileName=file.name;
+    const {chunks, totalChunks}=getChunks(file,fileSize);
+    const objectKey=await uploadChunks(chunks, totalChunks,fileType,fileName) as string
+    const url=await getDownloadLink(objectKey!,fileName,fileType) as string
+    setFileMetaData({fileName, fileType, fileUrl: url})
+    if(formRef && formRef.current) formRef.current.reset();
+    }catch(err){
+      console.log(err);
+    }
+  }
+  
+  return (
+    <div className='w-max h-48 border-white flex flex-col items-center justify-around p-3'>
+    <form className='h-full flex flex-col items-center' 
+          method="post" 
+          encType="multipart/form-data" 
+          onSubmit={handleSubmit}
+          ref={formRef} >
+       <label>Choose file to upload</label>
+       <input
+        type="file"
+        name="fileUpload"
+        accept='*/*'
+         />
+        <button className='bg-gray-700 p-2 rounded-md' type="submit">Submit</button>
+    </form>
+    {fileMetaData && <FileDownloadLink fileUrl={fileMetaData?.fileUrl} fileName={fileMetaData?.fileName} />}
     </div>
   );
 }
